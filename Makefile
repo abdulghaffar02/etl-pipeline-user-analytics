@@ -2,7 +2,7 @@
 # so the project also works on machines without `make` (e.g. Windows).
 
 .DEFAULT_GOAL := help
-.PHONY: help setup check-uv test lint fmt check clean
+.PHONY: help setup check-uv requirements test lint fmt check clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-10s %s\n", $$1, $$2}'
@@ -13,6 +13,10 @@ check-uv:
 setup: check-uv ## Create .venv, install locked dependencies and git hooks
 	uv sync
 	uv run pre-commit install
+
+requirements: ## Regenerate requirements*.txt from uv.lock (pip fallback)
+	uv export --frozen --no-dev --no-emit-project --quiet --output-file=requirements.txt
+	uv export --frozen --no-emit-project --quiet --output-file=requirements-dev.txt
 
 test: ## Run the test suite
 	uv run pytest
