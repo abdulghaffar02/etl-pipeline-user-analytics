@@ -1,5 +1,7 @@
 # etl-pipeline-user-analytics
 
+[![CI](https://github.com/abdulghaffar02/etl-pipeline-user-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/abdulghaffar02/etl-pipeline-user-analytics/actions/workflows/ci.yml)
+
 Python ETL that loads ListenBrainz listening history (JSON lines) into DuckDB and answers
 analytics questions with SQL.
 
@@ -67,3 +69,6 @@ The dataset is not committed. Place the export file in `data/` (gitignored).
 - Branch names: `feat/…`, `fix/…`, `chore/…`, `docs/…`, `test/…`, `ci/…`.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org).
 - The pre-commit hooks run ruff and block local commits to `main`.
+- CI runs on every PR: `lint` (ruff) on Ubuntu, `test` (pytest) on macOS, Ubuntu and Windows.
+  All must pass before merging.
+- Dependabot opens weekly PRs for GitHub Actions and Python dependency updates.
