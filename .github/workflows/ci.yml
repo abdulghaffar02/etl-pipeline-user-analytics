@@ -23,6 +23,8 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - name: Check requirements*.txt match uv.lock
+        run: uv run pre-commit run uv-export --all-files --show-diff-on-failure
 
   test:
     runs-on: ${{ matrix.os }}
@@ -39,3 +41,20 @@ jobs:
       - run: uv sync --locked
       - run: uv run listens-etl --version
       - run: uv run pytest
+
+  # Follows the README's "Without uv" instructions on macOS (the reviewer's platform).
+  pip-fallback:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+      - run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e . --no-deps
+          listens-etl --version
+          pytest

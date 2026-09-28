@@ -12,7 +12,7 @@ analytics questions with SQL.
 | [uv](https://docs.astral.sh/uv/) | 0.5+ | Installs Python 3.12 and all dependencies from `uv.lock` |
 | make | any | Optional shortcut layer; every target has a plain-command equivalent |
 
-DuckDB ships inside the `duckdb` Python package — no separate database install or server.
+DuckDB comes with the `duckdb` Python package, so there's no separate database to install.
 
 ## Setup (macOS)
 
@@ -38,13 +38,15 @@ Same commands. On Windows without `make`, use the plain commands shown after eac
 
 ### Without uv (pip fallback)
 
-Requires Python 3.11+ and pip 25.1+ (for `--group`).
+Requires Python 3.11+. Installs the same pinned, hash-checked versions as `uv.lock`
+(`requirements*.txt` are generated from it; don't edit them by hand).
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 python -m pip install --upgrade pip
-pip install -e . --group dev
+pip install -r requirements-dev.txt    # runtime only: requirements.txt
+pip install -e . --no-deps
 pytest
 ```
 
@@ -57,7 +59,8 @@ pytest
 | `make lint` | `uv run ruff check . && uv run ruff format --check .` | Lint + format check |
 | `make fmt` | `uv run ruff check --fix . && uv run ruff format .` | Auto-fix and format |
 | `make check` | lint + test | What CI runs |
-| `make clean` | — | Remove `.venv`, caches, local DB files |
+| `make requirements` | see Makefile | Regenerate `requirements*.txt` (the pre-commit hook does this too) |
+| `make clean` | | Remove `.venv`, caches, local DB files |
 
 ## Data
 
@@ -66,9 +69,11 @@ The dataset is not committed. Place the export file in `data/` (gitignored).
 ## Contributing
 
 - `main` is protected: no direct pushes, changes land via squash-merged PRs.
-- Branch names: `feat/…`, `fix/…`, `chore/…`, `docs/…`, `test/…`, `ci/…`.
+- Branch names: `feat/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/` prefixes.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org).
 - The pre-commit hooks run ruff and block local commits to `main`.
-- CI runs on every PR: `lint` (ruff) on Ubuntu, `test` (pytest) on macOS, Ubuntu and Windows.
-  All must pass before merging.
+- CI runs on every PR, and all jobs must pass before merging:
+  - `lint`: ruff, plus a check that `requirements*.txt` match `uv.lock`.
+  - `test`: pytest on macOS, Ubuntu and Windows.
+  - `pip-fallback`: the "Without uv" steps above, on macOS.
 - Dependabot opens weekly PRs for GitHub Actions and Python dependency updates.
