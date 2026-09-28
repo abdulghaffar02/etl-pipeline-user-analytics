@@ -55,6 +55,7 @@ pytest
 | make | Plain command | Purpose |
 |---|---|---|
 | `make setup` | `uv sync && uv run pre-commit install` | Install deps and git hooks |
+| `make init-db` | `uv run listens-etl init-db` | Create the database and tables |
 | `make test` | `uv run pytest` | Run tests |
 | `make lint` | `uv run ruff check . && uv run ruff format --check .` | Lint + format check |
 | `make fmt` | `uv run ruff check --fix . && uv run ruff format .` | Auto-fix and format |
@@ -65,6 +66,11 @@ pytest
 ## Data
 
 The dataset is not committed. Place the export file in `data/` (gitignored).
+
+The database is created at `data/listens.duckdb`. To put it somewhere else, pass
+`--db PATH` or set `LISTENS_DB` (the flag wins). The schema lives in
+[`schema.sql`](src/listens_etl/schema.sql) and is applied on every connect, so it's safe
+to run `init-db` more than once.
 
 ## Contributing
 
