@@ -64,8 +64,8 @@ def test_analyze(tmp_path, write_export, capsys):
         "c_daily_active_users.csv",
     ]
     assert (out_dir / "a1_top_users.csv").read_text().splitlines() == [
-        "user_name,number_of_listens",
-        "alice,1",
+        "user_name,number_of_listens,distinct_songs",
+        "alice,1,1",
     ]
 
 

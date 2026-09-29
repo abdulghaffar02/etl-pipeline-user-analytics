@@ -51,7 +51,8 @@ flowchart LR
    raises `InvalidRecord` with a reason. The file is read in binary mode, so a line with
    broken encoding is rejected on its own.
 2. **Stage.** Valid listens go into a temp table in batches of 100k (via Arrow); rejected
-   lines go to `rejected_records` with their line number and reason.
+   lines go to `rejected_records` with their line number and reason. They're stored per
+   run, so loading the same file again logs its bad lines again under the new `run_id`.
 3. **Merge.** [`ingest.py`](src/listens_etl/ingest.py) upserts artists and recordings,
    then inserts listens with `ON CONFLICT DO NOTHING`.
 4. **Log.** Every run gets a row in `ingestion_runs` with the file's SHA-256 and counts.
@@ -77,6 +78,20 @@ Defined in [`schema.sql`](src/listens_etl/schema.sql) and applied on every conne
 | `ingestion_runs` | load run | `run_id` |
 | `rejected_records` | unusable line | `run_id, line_number` |
 
+How the schema helps analysis:
+
+- **Listens are inserted sorted by time.** DuckDB keeps min/max values per block, so a
+  date filter skips most of the table. The a2 query filters on a `listened_at` range for
+  the same reason, rather than wrapping the column in a function.
+- **`listened_date` is a computed column**, so the daily queries (b, c) just group by it
+  and it can't disagree with `listened_at`.
+- **Ids are stored as `UUID`**: 16 bytes instead of a 36-character string, and a badly
+  formed id is rejected on insert.
+- **The views do the joins once.** `listens_enriched` adds track, artist and release names
+  to each listen; `users` has first and last listen per user.
+- **No extra indexes.** DuckDB is a column store and these queries scan whole columns,
+  where an index wouldn't help. The primary key is there for uniqueness, not speed.
+
 ## Analysis
 
 One SQL file per question in [`src/listens_etl/queries/`](src/listens_etl/queries/):
@@ -98,7 +113,10 @@ uv run listens-etl analyze --rows 50        # print more rows
 How I read the questions:
 
 - All dates are UTC. `listened_at` is a Unix timestamp, so UTC is the only neutral choice.
-- "Songs listened to" counts every listen, repeats included.
+- a1: "songs listened to" counts every listen, repeats included. The other reading,
+  distinct songs, gives a very different top 10, so the query shows `distinct_songs` too.
+  hds is first by listens (46,885) but played only 102 different recordings, 162nd of
+  202 users by that measure.
 - One user name, `Cl\ufffdpsHydra`, contains the Unicode replacement character. It's
   like that in the export itself (a `\ufffd` escape), so I kept it as-is rather than
   guess the original.
@@ -106,8 +124,11 @@ How I read the questions:
   ListenBrainz tags the later plays in such a group with `dedup_tag`, so that decides the order.
 - b: ties on the count go to the earlier date. 19 users have fewer than 3 active days
   and get fewer than 3 rows.
-- c: the percentage is out of all 202 users in the data. The first 6 days have incomplete
-  windows and 2019-04-15 has only a few minutes of data; I left them in rather than hide them.
+- c: the percentage is out of all 202 users in the data. I considered dividing by the users
+  seen so far instead, but then 1 January would be 100% (all 72 users seen that day were
+  active), and the early weeks would mostly reflect how many users had signed up so far.
+  The first 6 days have incomplete windows and 2019-04-15 has only a few minutes of data;
+  I left them in rather than hide them.
 
 ## Design decisions
 
