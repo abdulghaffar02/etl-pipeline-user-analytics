@@ -3,10 +3,10 @@
 
 .DEFAULT_GOAL := help
 FILE ?= data/dataset.txt
-.PHONY: help setup check-uv requirements init-db ingest test lint fmt check clean
+.PHONY: help setup check-uv requirements init-db ingest analyze pipeline test lint fmt check clean
 
 help: ## Show available targets
-	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-13s %s\n", $$1, $$2}'
 
 check-uv:
 	@command -v uv >/dev/null 2>&1 || { echo "uv not found. Install: brew install uv  (or see https://docs.astral.sh/uv/)"; exit 1; }
@@ -24,6 +24,11 @@ init-db: ## Create the database (override location with LISTENS_DB=path)
 
 ingest: ## Load an export file (default FILE=data/dataset.txt)
 	uv run listens-etl ingest $(FILE)
+
+analyze: ## Run the Task 2 queries and save full results to results/
+	uv run listens-etl analyze --out results
+
+pipeline: ingest analyze ## ingest + analyze
 
 test: ## Run the test suite
 	uv run pytest
