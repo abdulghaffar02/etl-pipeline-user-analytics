@@ -99,6 +99,9 @@ How I read the questions:
 
 - All dates are UTC. `listened_at` is a Unix timestamp, so UTC is the only neutral choice.
 - "Songs listened to" counts every listen, repeats included.
+- One user name, `Cl\ufffdpsHydra`, contains the Unicode replacement character. It's
+  like that in the export itself (a `\ufffd` escape), so I kept it as-is rather than
+  guess the original.
 - a3: two users played two songs within the same second as their first listen.
   ListenBrainz tags the later plays in such a group with `dedup_tag`, so that decides the order.
 - b: ties on the count go to the earlier date. 19 users have fewer than 3 active days
@@ -222,5 +225,6 @@ pytest
 - CI runs on every PR, and all jobs must pass before merging:
   - `lint`: ruff, and a check that `requirements*.txt` match `uv.lock`
   - `test`: pytest on macOS, Ubuntu and Windows
+  - `test (python 3.11)`: pytest on the lowest supported Python
   - `pip-fallback`: the "Without uv" steps, on macOS
-- Dependabot opens weekly PRs for GitHub Actions and Python dependencies.
+- Dependabot opens weekly PRs to update the pinned GitHub Actions.
