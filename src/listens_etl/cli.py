@@ -1,10 +1,11 @@
 import argparse
 import logging
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from listens_etl import __version__, analysis, db
+from listens_etl import __version__, analysis, db, report
 from listens_etl.config import DB_PATH_ENV_VAR, resolve_db_path
 from listens_etl.ingest import ingest_file
 
@@ -40,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument("--out", type=Path, help="also write each full result to DIR/<query>.csv")
     analyze.add_argument("--rows", type=int, default=20, help="rows to print per query")
+    analyze.add_argument("--markdown", type=Path, help="also write the results to a Markdown file")
     return parser
 
 
@@ -91,6 +93,14 @@ def _analyze(args, db_path: Path) -> int:
                 result.write_csv(str(args.out / f"{name}.csv"))
         if args.out:
             print(f"\nFull results written to {args.out}/")
+        if args.markdown:
+            csv_dir = None
+            if args.out:  # link the CSVs relative to where the Markdown file lives
+                csv_dir = Path(os.path.relpath(args.out, args.markdown.parent)).as_posix()
+            names = args.queries or analysis.query_names()
+            text = report.markdown_report(con, names, csv_dir)
+            args.markdown.write_text(text, encoding="utf-8")
+            print(f"Results written to {args.markdown}")
     finally:
         con.close()
     return 0
