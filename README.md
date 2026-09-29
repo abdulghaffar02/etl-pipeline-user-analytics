@@ -56,6 +56,7 @@ pytest
 |---|---|---|
 | `make setup` | `uv sync && uv run pre-commit install` | Install deps and git hooks |
 | `make init-db` | `uv run listens-etl init-db` | Create the database and tables |
+| `make ingest` | `uv run listens-etl ingest data/dataset.txt` | Load the export (`FILE=...` for another file) |
 | `make test` | `uv run pytest` | Run tests |
 | `make lint` | `uv run ruff check . && uv run ruff format --check .` | Lint + format check |
 | `make fmt` | `uv run ruff check --fix . && uv run ruff format .` | Auto-fix and format |
@@ -65,7 +66,22 @@ pytest
 
 ## Data
 
-The dataset is not committed. Place the export file in `data/` (gitignored).
+The dataset is not committed. Copy the export to `data/dataset.txt` (gitignored), then:
+
+```bash
+make ingest              # or: uv run listens-etl ingest data/dataset.txt
+```
+
+Loading the 333k-line export takes about 5 seconds. Running it again is safe: listens are
+keyed on user, timestamp and recording, so nothing is inserted twice, and an overlapping
+file only adds the new listens. Lines that can't be used (broken JSON, missing user,
+bad timestamp or id, etc.) are skipped and stored in `rejected_records` with the line
+number and reason. Each run is logged in `ingestion_runs`:
+
+```sql
+SELECT run_id, status, lines_read, rows_inserted, rows_duplicate, rows_rejected
+FROM ingestion_runs ORDER BY run_id;
+```
 
 The database is created at `data/listens.duckdb`. To put it somewhere else, pass
 `--db PATH` or set `LISTENS_DB` (the flag wins). The schema lives in
