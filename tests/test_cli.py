@@ -87,3 +87,14 @@ def test_analyze_without_data(tmp_path, capsys):
     main(["init-db", "--db", str(tmp_path / "empty.duckdb")])
     assert main(["analyze", "--db", str(tmp_path / "empty.duckdb")]) == 1
     assert "has no listens" in capsys.readouterr().err
+
+
+def test_analyze_markdown_links_csvs_relative_to_the_file(tmp_path, write_export):
+    db_file = tmp_path / "cli.duckdb"
+    main(["ingest", str(write_export([make_listen()])), "--db", str(db_file)])
+    md = tmp_path / "docs" / "RESULTS.md"
+    md.parent.mkdir()
+
+    args = ["analyze", "--db", str(db_file), "--out", str(tmp_path / "results")]
+    assert main([*args, "--markdown", str(md)]) == 0
+    assert "[`../results/`](../results/)" in md.read_text()
