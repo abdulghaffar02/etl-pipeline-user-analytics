@@ -45,6 +45,7 @@ def test_schema_objects_exist(con):
         "listened_at",
         "recording_msid",
         "run_id",
+        "additional_info",
         "listened_date",
     ]
 

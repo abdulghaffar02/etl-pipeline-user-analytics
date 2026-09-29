@@ -43,8 +43,6 @@ CREATE TABLE IF NOT EXISTS recordings (
     release_msid    UUID,
     release_name    VARCHAR,
     recording_mbid  UUID,
-    -- everything else from track_metadata.additional_info; mostly sparse
-    additional_info JSON,
     last_seen_at    TIMESTAMP NOT NULL
 );
 
@@ -55,6 +53,9 @@ CREATE TABLE IF NOT EXISTS listens (
     listened_at    TIMESTAMP NOT NULL,
     recording_msid UUID NOT NULL,
     run_id         INTEGER NOT NULL,
+    -- remaining non-empty track_metadata.additional_info keys. Kept per listen
+    -- because some of them (dedup_tag, listening_from) describe the listen.
+    additional_info JSON,
     listened_date  DATE GENERATED ALWAYS AS (CAST(listened_at AS DATE)) VIRTUAL,
     PRIMARY KEY (user_name, listened_at, recording_msid)
 );
