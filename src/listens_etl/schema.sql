@@ -78,7 +78,8 @@ SELECT
     l.recording_msid,
     r.track_name,
     a.artist_name,
-    r.release_name
+    r.release_name,
+    l.additional_info
 FROM listens l
 LEFT JOIN recordings r ON r.recording_msid = l.recording_msid
 LEFT JOIN artists a ON a.artist_msid = r.artist_msid;
