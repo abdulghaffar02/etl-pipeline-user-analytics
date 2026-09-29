@@ -37,3 +37,8 @@ def make_listen(
 
 def to_line(listen: dict) -> str:
     return json.dumps(listen)
+
+
+def msid(n: int) -> str:
+    """A distinct, valid msid per number, for tests that need many recordings."""
+    return f"00000000-0000-4000-8000-{n:012d}"
