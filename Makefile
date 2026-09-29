@@ -2,7 +2,8 @@
 # so the project also works on machines without `make` (e.g. Windows).
 
 .DEFAULT_GOAL := help
-.PHONY: help setup check-uv requirements init-db test lint fmt check clean
+FILE ?= data/dataset.txt
+.PHONY: help setup check-uv requirements init-db ingest test lint fmt check clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-10s %s\n", $$1, $$2}'
@@ -20,6 +21,9 @@ requirements: ## Regenerate requirements*.txt from uv.lock (pip fallback)
 
 init-db: ## Create the database (override location with LISTENS_DB=path)
 	uv run listens-etl init-db
+
+ingest: ## Load an export file (default FILE=data/dataset.txt)
+	uv run listens-etl ingest $(FILE)
 
 test: ## Run the test suite
 	uv run pytest
