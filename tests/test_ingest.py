@@ -1,10 +1,9 @@
 import pytest
 
-from helpers import make_listen
+from helpers import OTHER_RECORDING, make_listen, msid
 from listens_etl import ingest
 from listens_etl.ingest import ingest_file
 
-OTHER = "283062c8-75e2-406a-8c5e-f38136aa5a68"
 DAY = 86_400
 
 
@@ -59,7 +58,7 @@ def test_duplicates_within_a_file_are_loaded_once(con, write_export):
 
 
 def test_same_second_different_recordings_are_both_kept(con, write_export):
-    ingest_file(con, write_export([make_listen(), make_listen(recording=OTHER)]))
+    ingest_file(con, write_export([make_listen(), make_listen(recording=OTHER_RECORDING)]))
     assert count(con, "listens") == 2
 
 
@@ -117,12 +116,8 @@ def test_batches_are_flushed(con, write_export):
 
 
 def test_references_are_consistent(con, write_export):
-    ingest_file(
-        con,
-        write_export(
-            [make_listen(), make_listen(recording=OTHER, artist_msid=OTHER, artist="Someone")]
-        ),
-    )
+    other = make_listen(recording=OTHER_RECORDING, artist_msid=msid(1), artist="Someone")
+    ingest_file(con, write_export([make_listen(), other]))
     orphans = con.execute(
         """
         SELECT
