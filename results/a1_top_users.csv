@@ -1,11 +1,11 @@
-user_name,number_of_listens
-hds,46885
-Groschi,14959
-Silent Singer,13005
-phdnk,12861
-6d6f7274686f6e,11544
-reverbel,8398
-Cl�psHydra,8318
-InvincibleAsia,7804
-cimualte,7356
-inhji,6349
+user_name,number_of_listens,distinct_songs
+hds,46885,102
+Groschi,14959,8906
+Silent Singer,13005,8324
+phdnk,12861,3587
+6d6f7274686f6e,11544,3895
+reverbel,8398,2115
+Cl�psHydra,8318,7784
+InvincibleAsia,7804,4954
+cimualte,7356,1639
+inhji,6349,2749

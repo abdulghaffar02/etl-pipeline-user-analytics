@@ -47,7 +47,18 @@ def test_top_users_counts_every_listen_and_breaks_ties_by_name(load):
     con = load(lines)
 
     expected = [("aaa", 12), ("u12", 12)] + [(f"u{i:02d}", i) for i in range(11, 3, -1)]
-    assert rows(con, "a1_top_users") == expected
+    assert [(user, n) for user, n, _ in rows(con, "a1_top_users")] == expected
+
+
+def test_top_users_ranks_by_plays_and_shows_distinct_songs(load):
+    con = load(
+        [
+            *[listen("alice", T0 + 60 * k, n=1) for k in range(3)],  # one song on repeat
+            listen("alice", T0 + 600, n=2),
+            *[listen("bob", T0 + 60 * k, n=10 + k) for k in range(3)],  # three different songs
+        ]
+    )
+    assert rows(con, "a1_top_users") == [("alice", 4, 2), ("bob", 3, 3)]
 
 
 def test_users_on_march_first_uses_utc_day_boundaries(load):

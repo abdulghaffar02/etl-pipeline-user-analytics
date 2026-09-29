@@ -21,6 +21,6 @@ def test_report_links_csvs_and_cuts_long_results(con, write_export, monkeypatch)
     assert "loaded from `export.jsonl` (sha256" in text
     assert str(path.parent) not in text  # no local paths in a published file
     assert "## a1_top_users" in text
-    assert "| alice | 1 |" in text
-    assert "| bob | 1 |" not in text
+    assert "| alice | 1 | 1 |" in text
+    assert "| bob | 1 | 1 |" not in text
     assert "First 1 of 2 rows, all of them in [`results/a1_top_users.csv`]" in text
