@@ -57,6 +57,8 @@ pytest
 | `make setup` | `uv sync && uv run pre-commit install` | Install deps and git hooks |
 | `make init-db` | `uv run listens-etl init-db` | Create the database and tables |
 | `make ingest` | `uv run listens-etl ingest data/dataset.txt` | Load the export (`FILE=...` for another file) |
+| `make analyze` | `uv run listens-etl analyze --out results` | Run the Task 2 queries, save CSVs |
+| `make pipeline` | ingest, then analyze | Everything in one go |
 | `make test` | `uv run pytest` | Run tests |
 | `make lint` | `uv run ruff check . && uv run ruff format --check .` | Lint + format check |
 | `make fmt` | `uv run ruff check --fix . && uv run ruff format .` | Auto-fix and format |
@@ -87,6 +89,35 @@ The database is created at `data/listens.duckdb`. To put it somewhere else, pass
 `--db PATH` or set `LISTENS_DB` (the flag wins). The schema lives in
 [`schema.sql`](src/listens_etl/schema.sql) and is applied on every connect, so it's safe
 to run `init-db` more than once.
+
+## Analysis
+
+Each Task 2 question is one SQL file in [`src/listens_etl/queries/`](src/listens_etl/queries/):
+
+| File | Question |
+|---|---|
+| `a1_top_users.sql` | Top 10 users by number of songs listened to |
+| `a2_users_on_2019_03_01.sql` | Users who listened to a song on 1 March 2019 |
+| `a3_first_song_per_user.sql` | First song each user listened to |
+| `b_top_days_per_user.sql` | Each user's top 3 days by listens |
+| `c_daily_active_users.sql` | Daily active users over a 7-day window, absolute and % |
+
+```bash
+make analyze                                   # all queries, full results in results/*.csv
+uv run listens-etl analyze a1_top_users        # just one
+uv run listens-etl analyze --rows 50           # print more rows
+```
+
+How I read the questions:
+
+- All dates are UTC. `listened_at` is a Unix timestamp, so there's no other timezone to use.
+- "Songs listened to" counts every listen, repeats included.
+- a3: two users played two songs in the same second as their first listen. ListenBrainz
+  marks the later ones with `dedup_tag`, so that decides the order.
+- b: ties on the count go to the earlier date. 19 users have fewer than 3 active days, so
+  they get fewer than 3 rows.
+- c: the percentage is out of all 202 users in the data. The first 6 days have incomplete
+  windows and 2019-04-15 only has a few minutes of data; both are left in, not hidden.
 
 ## Contributing
 
