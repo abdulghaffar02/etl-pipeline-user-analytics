@@ -135,15 +135,16 @@ def _stage(con, path: Path, stats: RunStats, batch_size: int) -> None:
 
 
 def _flush(con, listens: list[tuple], rejects: list[tuple]) -> None:
-    # DuckDB reads the local pyarrow table by variable name.
+    # DuckDB reads the local pyarrow table by variable name. BY NAME matches columns
+    # by name, so reordering Listen's fields can't silently swap two text columns.
     if listens:
         listen_batch = _to_arrow(LISTEN_COLUMNS, listens)  # noqa: F841
-        con.execute("INSERT INTO staged_listens SELECT * FROM listen_batch")
+        con.execute("INSERT INTO staged_listens BY NAME SELECT * FROM listen_batch")
         log.debug("staged %d listens", len(listens))
         listens.clear()
     if rejects:
         reject_batch = _to_arrow(REJECT_COLUMNS, rejects)  # noqa: F841
-        con.execute("INSERT INTO rejected_records SELECT * FROM reject_batch")
+        con.execute("INSERT INTO rejected_records BY NAME SELECT * FROM reject_batch")
         rejects.clear()
 
 

@@ -23,7 +23,7 @@ init-db: ## Create the database (override location with LISTENS_DB=path)
 	uv run listens-etl init-db
 
 ingest: ## Load an export file (default FILE=data/dataset.txt)
-	uv run listens-etl ingest $(FILE)
+	uv run listens-etl ingest "$(FILE)"
 
 analyze: ## Run the Task 2 queries, write results/*.csv and RESULTS.md
 	uv run listens-etl analyze --out results --markdown RESULTS.md

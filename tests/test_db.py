@@ -1,11 +1,10 @@
 import duckdb
 import pytest
 
+from helpers import ARTIST, OTHER_RECORDING, RECORDING
 from listens_etl import db
 
 USER = "alice"
-RECORDING = "1e1b2aa0-b2db-42ed-a8ba-89c303499408"
-OTHER_RECORDING = "283062c8-75e2-406a-8c5e-f38136aa5a68"
 
 
 def insert_listen(con, listened_at, recording=RECORDING, user=USER):
@@ -102,15 +101,14 @@ def test_users_view(con):
 
 
 def test_listens_enriched_view(con):
-    artist = "f1d39567-27e7-40af-852a-abaed88ec838"
     seen = "2019-03-01 10:00:00"
-    con.execute("INSERT INTO artists VALUES (?, 'Withered Hand', ?)", [artist, seen])
+    con.execute("INSERT INTO artists VALUES (?, 'Withered Hand', ?)", [ARTIST, seen])
     con.execute(
         """
         INSERT INTO recordings (recording_msid, track_name, artist_msid, release_name, last_seen_at)
         VALUES (?, 'Cornflake', ?, 'Good News', ?)
         """,
-        [RECORDING, artist, seen],
+        [RECORDING, ARTIST, seen],
     )
     insert_listen(con, "2019-03-01 10:00:00")
     insert_listen(con, "2019-03-01 11:00:00", recording=OTHER_RECORDING)  # no metadata yet

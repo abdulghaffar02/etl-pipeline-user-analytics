@@ -32,10 +32,10 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("file", type=Path, help="JSON lines export, one listen per line")
 
     analyze = sub.add_parser("analyze", parents=[common], help="run the Task 2 queries")
+    # No `choices=` here: with nargs="*" argparse rejects the empty default on Python 3.11.
     analyze.add_argument(
         "queries",
         nargs="*",
-        choices=analysis.query_names(),
         metavar="QUERY",
         help=f"which queries to run (default: all). One of: {', '.join(analysis.query_names())}",
     )
@@ -68,6 +68,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             con.close()
 
     elif args.command == "analyze":
+        unknown = [q for q in args.queries if q not in analysis.query_names()]
+        if unknown:
+            parser.error(
+                f"unknown query: {', '.join(unknown)} "
+                f"(choose from {', '.join(analysis.query_names())})"
+            )
         return _analyze(args, db_path)
     return 0
 
@@ -99,6 +105,7 @@ def _analyze(args, db_path: Path) -> int:
                 csv_dir = Path(os.path.relpath(args.out, args.markdown.parent)).as_posix()
             names = args.queries or analysis.query_names()
             text = report.markdown_report(con, names, csv_dir)
+            args.markdown.parent.mkdir(parents=True, exist_ok=True)
             args.markdown.write_text(text, encoding="utf-8")
             print(f"Results written to {args.markdown}")
     finally:
