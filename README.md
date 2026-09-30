@@ -108,8 +108,8 @@ Defined in [`schema.sql`](src/listens_etl/schema.sql) and applied on every conne
 
 For the analysis:
 
-- Listens are stored in time order, so date filters (like a2's `listened_at` range) skip
-  most of the table.
+- Each load inserts listens in time order, so date filters (like a2's `listened_at` range)
+  skip most of the table.
 - `listened_date` is a computed column the daily queries group by.
 - Ids use DuckDB's `UUID` type: 16 bytes each, and a malformed id fails on insert.
 - No extra indexes. DuckDB is a column store and these queries read whole columns.
