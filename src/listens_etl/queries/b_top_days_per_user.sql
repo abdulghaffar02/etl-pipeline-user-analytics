@@ -1,6 +1,5 @@
 -- Each user's 3 days with the most listens.
--- Ties on the count go to the earlier date. Users with fewer than 3 active days
--- get fewer rows (19 users in the provided export).
+-- Ties go to the earlier date. Users with fewer than 3 active days get fewer rows.
 WITH daily AS (
     SELECT
         user_name,

@@ -3,14 +3,13 @@
 [![CI](https://github.com/abdulghaffar02/etl-pipeline-user-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/abdulghaffar02/etl-pipeline-user-analytics/actions/workflows/ci.yml)
 
 Loads a ListenBrainz listening-history export (one JSON listen per line) into DuckDB and
-answers the Task 2 questions with SQL. Re-running the load is safe, and bad lines are
-set aside with a reason instead of breaking the run. The answers are in [RESULTS.md](RESULTS.md).
+answers the Task 2 questions in SQL. The answers are in [`results/`](results/), one CSV
+per question.
 
 ## Quickstart (macOS)
 
-Needs [uv](https://docs.astral.sh/uv/) (`brew install uv`). uv installs Python 3.12 and
-the locked dependencies itself. DuckDB comes with the Python package, so there's no
-database server to set up.
+You need [uv](https://docs.astral.sh/uv/) (`brew install uv`). It installs Python 3.12 and
+the pinned dependencies. DuckDB is just a Python package here, there's no server to run.
 
 ```bash
 git clone https://github.com/abdulghaffar02/etl-pipeline-user-analytics.git
@@ -18,46 +17,28 @@ cd etl-pipeline-user-analytics
 cp /path/to/dataset.txt data/dataset.txt
 ```
 
-Then:
-
 ```bash
 make setup
 make pipeline
 ```
 
-`make pipeline` loads the file (about 5 seconds), runs the queries, prints the results and
-writes them to `RESULTS.md` and `results/*.csv`.
+`make pipeline` loads the file (a few seconds), runs the queries, prints the results and
+writes them to `results/`.
 
 If `make` or `git` complains about the Xcode license, run `sudo xcodebuild -license accept` once.
 
 ## How it works
 
-```mermaid
-flowchart LR
-    file[/"dataset.txt<br>JSON lines"/] --> parse["parse_line<br>validate each line"]
-    parse -- valid --> staged[("staged_listens<br>temp table")]
-    parse -- invalid --> rejected[("rejected_records")]
-    staged --> merge["merge<br>dedupe + upsert"]
-    merge --> listens[("listens")]
-    merge --> recordings[("recordings")]
-    merge --> artists[("artists")]
-    listens --> queries["queries/*.sql"]
-    recordings --> queries
-    artists --> queries
-    queries --> out["RESULTS.md<br>results/*.csv"]
-```
-
-1. **Parse.** [`parse.py`](src/listens_etl/parse.py) turns one line into a `Listen` or
-   raises `InvalidRecord` with a reason. The file is read in binary mode, so a line with
-   broken encoding is rejected on its own.
-2. **Stage.** Valid listens go into a temp table in batches of 100k (via Arrow); rejected
-   lines go to `rejected_records` with their line number and reason. They're stored per
-   run, so loading the same file again logs its bad lines again under the new `run_id`.
-3. **Merge.** [`ingest.py`](src/listens_etl/ingest.py) upserts artists and recordings,
-   then inserts listens with `ON CONFLICT DO NOTHING`.
-4. **Log.** Every run gets a row in `ingestion_runs` with the file's SHA-256 and counts.
-   The whole run is one transaction; if it fails, nothing is loaded and the run is
-   marked `failed` with the error.
+1. [`parse.py`](src/listens_etl/parse.py) turns each line into a `Listen` or rejects it
+   with a reason. The file is read in binary mode, which means one badly encoded line
+   can't stop the run.
+2. Valid listens are staged in a temp table in batches of 100k. Rejected lines go to
+   `rejected_records` with their line number and the reason. That table is per run:
+   loading the same file twice logs its bad lines twice.
+3. [`ingest.py`](src/listens_etl/ingest.py) upserts artists and recordings, then inserts
+   the listens with `ON CONFLICT DO NOTHING`.
+4. Every run is logged in `ingestion_runs` with the file hash and counts. A run is one
+   transaction. If anything fails nothing is loaded, and the run shows up as `failed`.
 
 ```sql
 SELECT run_id, status, lines_read, rows_inserted, rows_duplicate, rows_rejected
@@ -74,23 +55,21 @@ Defined in [`schema.sql`](src/listens_etl/schema.sql) and applied on every conne
 | `recordings` | recording | `recording_msid` |
 | `artists` | artist | `artist_msid` |
 | `users` (view) | user, with first/last listen and count | `user_name` |
-| `listens_enriched` (view) | listen, joined with track, artist and release names | |
+| `listens_enriched` (view) | listen, with track, artist and release names | |
 | `ingestion_runs` | load run | `run_id` |
 | `rejected_records` | unusable line | `run_id, line_number` |
 
-How the schema helps analysis:
+Some choices that make the analysis easier:
 
-- **Listens are inserted sorted by time.** DuckDB keeps min/max values per block, so a
-  date filter skips most of the table. The a2 query filters on a `listened_at` range for
-  the same reason, rather than wrapping the column in a function.
-- **`listened_date` is a computed column**, so the daily queries (b, c) just group by it
-  and it can't disagree with `listened_at`.
-- **Ids are stored as `UUID`**: 16 bytes instead of a 36-character string, and a badly
-  formed id is rejected on insert.
-- **The views do the joins once.** `listens_enriched` adds track, artist and release names
-  to each listen; `users` has first and last listen per user.
-- **No extra indexes.** DuckDB is a column store and these queries scan whole columns,
-  where an index wouldn't help. The primary key is there for uniqueness, not speed.
+- Listens are inserted in time order. DuckDB keeps min/max values per block, and a date
+  filter can skip most of the table. The a2 query filters on a plain `listened_at` range
+  for that reason.
+- `listened_date` is a computed column, and the daily queries group by it directly.
+- Ids use DuckDB's `UUID` type: 16 bytes each, and a malformed id fails on insert.
+- The joins to track, artist and release names live in the `listens_enriched` view.
+  Per-user stats are in `users`.
+- I didn't add indexes. DuckDB is a column store and these queries read whole columns
+  anyway. The primary key is only there to keep listens unique.
 
 ## Analysis
 
@@ -105,80 +84,65 @@ One SQL file per question in [`src/listens_etl/queries/`](src/listens_etl/querie
 | `c_daily_active_users.sql` | Daily active users over a 7-day window, count and % |
 
 ```bash
-make analyze                                # all queries, writes RESULTS.md and results/
-uv run listens-etl analyze a1_top_users     # just one, printed
+make analyze                                # all queries, CSVs in results/
+uv run listens-etl analyze a1_top_users     # just one
 uv run listens-etl analyze --rows 50        # print more rows
 ```
 
 How I read the questions:
 
-- All dates are UTC. `listened_at` is a Unix timestamp, so UTC is the only neutral choice.
-- a1: "songs listened to" counts every listen, repeats included. The other reading,
-  distinct songs, gives a very different top 10, so the query shows `distinct_songs` too.
-  hds is first by listens (46,885) but played only 102 different recordings, 162nd of
-  202 users by that measure.
-- One user name, `Cl\ufffdpsHydra`, contains the Unicode replacement character. It's
-  like that in the export itself (a `\ufffd` escape), so I kept it as-is rather than
-  guess the original.
-- a3: two users played two songs within the same second as their first listen.
-  ListenBrainz tags the later plays in such a group with `dedup_tag`, so that decides the order.
-- b: ties on the count go to the earlier date. 19 users have fewer than 3 active days
-  and get fewer than 3 rows.
-- c: the percentage is out of all 202 users in the data. I considered dividing by the users
-  seen so far instead, but then 1 January would be 100% (all 72 users seen that day were
-  active), and the early weeks would mostly reflect how many users had signed up so far.
-  The first 6 days have incomplete windows and 2019-04-15 has only a few minutes of data;
-  I left them in rather than hide them.
+- Dates are UTC. `listened_at` is a Unix timestamp and the data has no user timezone.
+- a1: I count every listen, repeats included. Counting distinct songs instead changes the
+  top 10 a lot. hds is first with 46,885 listens but played only 102 different recordings.
+  That's why the query also returns `distinct_songs`.
+- a3: in two cases a user's first listen shares its second with another one. ListenBrainz
+  sets `dedup_tag` on the later plays, and I use that to order them.
+- b: ties go to the earlier date. Users with fewer than 3 active days get fewer rows.
+- c: the percentage is out of all users in the data. I thought about dividing by the users
+  seen so far, but then 1 January comes out at 100% and the first weeks mostly measure
+  sign-ups. The first six days have incomplete windows and the last day only has a few
+  minutes of data. I kept both.
+- One user name contains the Unicode replacement character (`�`). It's like that in
+  the export and I left it alone.
 
 ## Design decisions
 
-Loading
-
 - A listen is identified by `(user_name, listened_at, recording_msid)`. User and
-  timestamp alone isn't enough: the export has 7,126 cases of a user playing two
-  different recordings in the same second.
-- Re-running is safe because of that key: the same file again inserts nothing, an
-  overlapping file only adds new listens, duplicates inside a file keep the first one.
-- Validation is strict for what a listen can't do without (user, timestamp, recording id,
-  track, artist and artist id) and lenient for the rest: a bad `release_msid` becomes NULL
-  instead of costing the listen.
-- When a recording or artist shows up with different names, the one from the most recent
-  listen wins, so the result doesn't depend on the order files are loaded in.
-- The DuckDB session is forced to UTC. It otherwise uses the machine's timezone; on a
-  machine set to Berlin time that moves listens near midnight onto the wrong day.
+  timestamp aren't unique on their own: the export has 7,126 cases of someone playing two
+  recordings in the same second.
+- That key is what makes re-runs safe. The same file again inserts nothing, an
+  overlapping file only adds the new listens, and duplicates within a file keep the
+  first copy.
+- Validation is strict for what a listen needs (user, timestamp, recording id, track,
+  artist and artist id). Malformed optional ids like `release_msid` become NULL. I'd
+  rather keep the listen than lose it over an id nobody queries.
+- If a recording or artist shows up with different names, the most recent listen wins.
+  The order in which files are loaded doesn't change the result.
+- The connection is set to UTC. DuckDB otherwise uses the machine's timezone, which put
+  listens near midnight on the wrong day on my laptop (Berlin time).
+- No foreign keys. In DuckDB they slow down bulk loads and get in the way of updating
+  referenced rows. A test checks for orphans instead.
+- `additional_info` is stored per listen with the empty keys dropped. Some of its keys,
+  like `dedup_tag` and `listening_from`, are about the listen itself.
+- For c, each (user, active day) is spread over the 7 days it counts for, and users are
+  counted once per day. Summing the daily counts over a window would count people
+  several times.
+- Before writing the tests I cross-checked every answer with a quick Python script over
+  the raw file.
 
-Schema
+## Trade-offs and next steps
 
-- Natural keys, no generated ids for data rows, so re-runs can't create new identities.
-- No foreign keys: in DuckDB they slow down bulk loads and block updates to referenced
-  rows. The loader keeps references consistent and a test checks for orphans.
-- `listened_date` is a virtual column and `users` is a view, so neither can drift from
-  `listens`.
-- `additional_info` keeps only the non-empty extra keys, per listen. Only about 6% of
-  listens have any, and some (`dedup_tag`, `listening_from`) describe the listen, not the track.
-
-Analysis
-
-- c expands each (user, active day) to the 7 days it makes the user active on, then counts
-  distinct users per day. Summing daily counts over a window would count a user once for
-  every day they were active in it.
-- Every answer was cross-checked against a separate plain-Python calculation over the raw file.
-
-## Trade-offs and what I'd do next
-
-- **Parsing speed.** Parsing happens in Python so each line is validated on its own. I
-  also tried parsing in DuckDB with `json_transform`: 2.4x faster (1.6s vs 4.0s here,
-  roughly 8 vs 20 minutes extrapolated to 100M lines), but a single unexpected value can
-  fail a whole batch. For the full ListenBrainz dump I'd switch, with `TRY_CAST` everywhere.
-- **DuckDB's own `read_json(ignore_errors=true)`** took 0.1s, but it loaded 31 of 35
-  deliberately broken test lines as if they were valid and dropped the rest without a
-  trace, so I didn't use it.
-- **Skipping known files.** The file hash is recorded but not used to skip a file that was
-  already loaded. Re-processing takes seconds and is guaranteed correct; skipping would
-  need a `--force` flag and an extra code path.
-- **At a larger scale** I'd materialise `users` as a table, partition listens by date,
-  and run the load from an orchestrator with alerting on the reject rate.
-- **Not done:** a Docker image, type checking in CI, a chart of daily active users.
+- Parsing happens in Python, which lets every line be checked on its own. I also tried
+  parsing in DuckDB with `json_transform`. It was more than twice as fast, but one
+  unexpected value can fail a whole batch. For the full ListenBrainz dump I'd switch and
+  use `TRY_CAST` everywhere.
+- DuckDB's `read_json(ignore_errors=true)` is faster still. In my tests it loaded most of
+  the deliberately broken lines as valid rows and dropped the rest without saying so.
+- The file hash is recorded but not used to skip files that were already loaded.
+  Reprocessing takes seconds and is always correct; skipping would need a `--force` flag.
+- At a bigger scale I'd turn `users` into a table, partition listens by date and run the
+  load from a scheduler, with an alert on the reject rate.
+- Not done: a Docker image, type checking, a chart for c.
 
 ## Project layout
 
@@ -191,51 +155,31 @@ src/listens_etl/
   schema.sql
   queries/*.sql    one file per Task 2 question
   analysis.py      runs the queries
-  report.py        writes RESULTS.md
   config.py        database path: --db, then $LISTENS_DB, then data/listens.duckdb
 tests/             pytest, small hand-built exports in each test
-results/           generated CSVs, one per query
-RESULTS.md         generated answers
+results/           query results, one CSV per question
 ```
 
-## Setup details
-
-### Commands
+## Commands
 
 | make | Plain command | Purpose |
 |---|---|---|
 | `make setup` | `uv sync && uv run pre-commit install` | Install deps and git hooks |
 | `make init-db` | `uv run listens-etl init-db` | Create the database and tables |
 | `make ingest` | `uv run listens-etl ingest data/dataset.txt` | Load the export (`FILE=...` for another file) |
-| `make analyze` | `uv run listens-etl analyze --out results --markdown RESULTS.md` | Run the queries, write results |
+| `make analyze` | `uv run listens-etl analyze --out results` | Run the queries, write the CSVs |
 | `make pipeline` | ingest, then analyze | Everything in one go |
 | `make test` | `uv run pytest` | Run tests |
 | `make lint` | `uv run ruff check . && uv run ruff format --check .` | Lint and format check |
 | `make fmt` | `uv run ruff check --fix . && uv run ruff format .` | Auto-fix and format |
 | `make check` | lint, then test | What CI runs |
-| `make requirements` | see Makefile | Regenerate `requirements*.txt` (the pre-commit hook does this too) |
 | `make clean` | | Remove `.venv`, caches, local database |
 
 The database lives at `data/listens.duckdb`. Use `--db PATH` or `LISTENS_DB` to put it
 somewhere else (the flag wins).
 
-### Linux and Windows
-
-Same commands. Without `make` (usually the case on Windows), use the plain commands above.
-
-### Without uv
-
-Needs Python 3.11+. Installs the same pinned, hash-checked versions as `uv.lock`; the
-`requirements*.txt` files are generated from it.
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-python -m pip install --upgrade pip
-pip install -r requirements-dev.txt    # runtime only: requirements.txt
-pip install -e . --no-deps
-pytest
-```
+On Linux and Windows the commands are the same. Without `make` (usually the case on
+Windows), use the plain commands.
 
 ## Contributing
 
@@ -243,9 +187,6 @@ pytest
 - Branch names start with `feat/`, `fix/`, `chore/`, `docs/`, `test/` or `ci/`.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org).
 - The pre-commit hooks run ruff and refuse commits to `main`.
-- CI runs on every PR, and all jobs must pass before merging:
-  - `lint`: ruff, and a check that `requirements*.txt` match `uv.lock`
-  - `test`: pytest on macOS, Ubuntu and Windows
-  - `test (python 3.11)`: pytest on the lowest supported Python
-  - `pip-fallback`: the "Without uv" steps, on macOS
+- CI runs on every PR and has to pass before merging: `lint`, `test` on macOS, Ubuntu
+  and Windows, and `test (python 3.11)` for the lowest supported Python.
 - Dependabot opens weekly PRs to update the pinned GitHub Actions.

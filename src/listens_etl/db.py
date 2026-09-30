@@ -8,8 +8,8 @@ def connect(db_path: Path) -> duckdb.DuckDBPyConnection:
     """Open (or create) the database and make sure the schema exists."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(db_path))
-    # DuckDB defaults to the machine's timezone, which would shift listens across
-    # midnight when timestamps are converted. Everything here is UTC.
+    # DuckDB uses the local timezone by default, which moves listens near midnight
+    # to the wrong day
     con.execute("SET TimeZone = 'UTC'")
     init_schema(con)
     return con

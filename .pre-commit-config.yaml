@@ -18,14 +18,3 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
-
-  # Keep pip-installable lock files in sync with uv.lock (used by the pip fallback in README).
-  - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.12.19
-    hooks:
-      - id: uv-export
-        name: uv-export (requirements.txt)
-        args: [--frozen, --no-dev, --no-emit-project, --quiet, --output-file=requirements.txt]
-      - id: uv-export
-        name: uv-export (requirements-dev.txt)
-        args: [--frozen, --no-emit-project, --quiet, --output-file=requirements-dev.txt]

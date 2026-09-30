@@ -1,6 +1,5 @@
 -- First song each user listened to.
--- Two users' first listen shares its second with another one. ListenBrainz tags the
--- later plays in such a group with dedup_tag = 1, 2, ..., so untagged sorts first.
+-- Same-second ties: ListenBrainz sets dedup_tag on the later plays.
 SELECT
     user_name,
     listened_at,
