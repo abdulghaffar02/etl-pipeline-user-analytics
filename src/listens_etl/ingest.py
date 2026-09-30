@@ -1,9 +1,7 @@
 """Load a ListenBrainz export (one JSON listen per line) into DuckDB.
 
-Safe to re-run: listens are keyed on (user_name, listened_at, recording_msid), so a
-file that was already loaded, or overlaps an earlier one, only adds what's new.
-Lines that can't be parsed go to rejected_records instead of stopping the run.
-Each run is one transaction: it either lands completely or not at all.
+Re-runnable: listens are keyed on (user_name, listened_at, recording_msid).
+Bad lines go to rejected_records. One transaction per run.
 """
 
 import hashlib
@@ -39,7 +37,7 @@ def ingest_file(
     con: duckdb.DuckDBPyConnection, path: Path, batch_size: int = BATCH_SIZE
 ) -> RunStats:
     started = time.perf_counter()
-    # The run row is committed on its own first, so a failed run still leaves a trace.
+    # commit the run row first, so failed runs are recorded too
     run_id = con.execute(
         """
         INSERT INTO ingestion_runs (source_file, source_sha256, status, started_at)
@@ -72,7 +70,7 @@ def ingest_file(
             ],
         )
         con.commit()
-    except BaseException as e:  # includes Ctrl-C, so the run isn't left as 'running'
+    except BaseException as e:  # Ctrl-C too
         con.rollback()
         con.execute(
             "UPDATE ingestion_runs SET status = 'failed', finished_at = now()::TIMESTAMP, "
@@ -116,8 +114,7 @@ def _stage(con, path: Path, stats: RunStats, batch_size: int) -> None:
     listens: list[tuple] = []
     rejects: list[tuple] = []
 
-    # Binary mode, so a line with broken encoding is rejected on its own
-    # instead of raising halfway through the file.
+    # binary mode: a badly encoded line gets rejected by itself
     with path.open("rb") as f:
         for line_number, raw in enumerate(f, start=1):
             stats.lines_read += 1
@@ -135,8 +132,7 @@ def _stage(con, path: Path, stats: RunStats, batch_size: int) -> None:
 
 
 def _flush(con, listens: list[tuple], rejects: list[tuple]) -> None:
-    # DuckDB reads the local pyarrow table by variable name. BY NAME matches columns
-    # by name, so reordering Listen's fields can't silently swap two text columns.
+    # DuckDB finds the arrow tables by variable name; BY NAME makes column order irrelevant
     if listens:
         listen_batch = _to_arrow(LISTEN_COLUMNS, listens)  # noqa: F841
         con.execute("INSERT INTO staged_listens BY NAME SELECT * FROM listen_batch")
@@ -153,9 +149,7 @@ def _to_arrow(columns: list[str], rows: list[tuple]) -> pa.Table:
 
 
 def _merge(con, stats: RunStats) -> None:
-    # Metadata: when the same id shows up with different names, the one from the most
-    # recent listen wins, whatever order the files arrive in. On an exact timestamp
-    # tie the row that's already there is kept.
+    # names: the most recent listen wins (on a tie the existing row stays)
     con.execute(
         """
         INSERT INTO artists (artist_msid, artist_name, last_seen_at)
@@ -184,9 +178,8 @@ def _merge(con, stats: RunStats) -> None:
             WHERE excluded.last_seen_at > recordings.last_seen_at
         """
     )
-    # Duplicates inside the file keep their first occurrence; listens that are
-    # already in the table are skipped by the primary key. Sorting by time keeps
-    # DuckDB's min/max block stats useful for date filters.
+    # first occurrence wins within the file, the PK skips what's already loaded.
+    # Sorted by time so date filters can skip blocks.
     stats.rows_inserted = con.execute(
         """
         INSERT INTO listens (user_name, listened_at, recording_msid, run_id, additional_info)

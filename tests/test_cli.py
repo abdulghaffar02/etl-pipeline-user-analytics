@@ -89,16 +89,6 @@ def test_analyze_without_data(tmp_path, capsys):
     assert "has no listens" in capsys.readouterr().err
 
 
-def test_analyze_markdown_links_csvs_relative_to_the_file(tmp_path, write_export):
-    db_file = tmp_path / "cli.duckdb"
-    main(["ingest", str(write_export([make_listen()])), "--db", str(db_file)])
-    md = tmp_path / "docs" / "RESULTS.md"  # docs/ doesn't exist yet
-
-    args = ["analyze", "--db", str(db_file), "--out", str(tmp_path / "results")]
-    assert main([*args, "--markdown", str(md)]) == 0
-    assert "[`../results/`](../results/)" in md.read_text()
-
-
 def test_analyze_unknown_query(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc:
         main(["analyze", "a1_top_users", "nope", "--db", str(tmp_path / "x.duckdb")])

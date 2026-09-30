@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-# Pulled out into their own columns, so they aren't repeated in additional_info.
+# already stored in their own columns
 EXTRACTED_KEYS = {"artist_msid", "recording_msid", "release_msid", "recording_mbid"}
 EMPTY = (None, "", [], {})
 
@@ -68,7 +68,7 @@ def parse_line(raw: bytes) -> Listen:
         artist_name=artist_name,
         artist_msid=artist_msid,
         release_name=release_name if isinstance(release_name, str) and release_name else None,
-        # optional ids: a bad value shouldn't cost us the listen
+        # optional ids: a bad one becomes NULL
         release_msid=_optional_uuid(info.get("release_msid")),
         recording_mbid=_optional_uuid(info.get("recording_mbid")),
         additional_info=json.dumps(extra) if extra else None,
@@ -83,7 +83,7 @@ def _required_str(doc: dict, key: str) -> str:
 
 
 def _timestamp(value) -> datetime:
-    # bool is a subclass of int, and floats would silently drop precision
+    # no bools (they're ints in Python) and no floats
     if type(value) is not int:
         raise InvalidRecord(f"listened_at is not an integer: {value!r}")
     if value < 0:

@@ -1,12 +1,6 @@
 -- Daily active users: a user is active on day X if they listened in [X-6 days, X].
---
--- Distinct counts don't add up across days (a user active on 5 of the 7 days would be
--- counted 5 times), so instead each (user, day) pair is expanded to the 7 days it makes
--- the user active on, then counted once per day. That's 7x the user-days, not a join
--- against all listens.
---
--- Percentage is out of all users in the database. The first 6 days have incomplete
--- windows and the last day only covers a few minutes; they're kept, not hidden.
+-- Each active (user, day) is spread over the 7 days it counts for, then users are
+-- counted once per day. Summing daily counts would count some users several times.
 WITH user_days AS (
     SELECT DISTINCT user_name, listened_date FROM listens
 ),

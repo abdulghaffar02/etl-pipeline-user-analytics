@@ -1,9 +1,5 @@
--- Applied on every connect, so every statement must be safe to re-run.
--- All timestamps are UTC (the connection forces TimeZone = 'UTC').
---
--- No foreign keys on purpose: they slow down bulk inserts in DuckDB and block
--- updating referenced rows. The loader keeps the references consistent and the
--- tests check it.
+-- Runs on every connect, so everything here has to be re-runnable.
+-- Timestamps are UTC. No foreign keys: they slow down bulk loads in DuckDB.
 
 CREATE SEQUENCE IF NOT EXISTS ingestion_run_id_seq;
 
@@ -32,7 +28,7 @@ CREATE TABLE IF NOT EXISTS rejected_records (
 CREATE TABLE IF NOT EXISTS artists (
     artist_msid  UUID PRIMARY KEY,
     artist_name  VARCHAR NOT NULL,
-    -- listened_at of the listen this name came from; the most recent one wins
+    -- from the most recent listen that had this artist
     last_seen_at TIMESTAMP NOT NULL
 );
 
@@ -46,21 +42,19 @@ CREATE TABLE IF NOT EXISTS recordings (
     last_seen_at    TIMESTAMP NOT NULL
 );
 
--- One row per listen. A user can play two different recordings in the same
--- second (7k cases in the sample export), so the recording is part of the key.
+-- A user can play two recordings in the same second, hence the 3-column key.
 CREATE TABLE IF NOT EXISTS listens (
     user_name      VARCHAR NOT NULL,
     listened_at    TIMESTAMP NOT NULL,
     recording_msid UUID NOT NULL,
     run_id         INTEGER NOT NULL,
-    -- remaining non-empty track_metadata.additional_info keys. Kept per listen
-    -- because some of them (dedup_tag, listening_from) describe the listen.
+    -- leftover additional_info keys (non-empty ones only)
     additional_info JSON,
     listened_date  DATE GENERATED ALWAYS AS (CAST(listened_at AS DATE)) VIRTUAL,
     PRIMARY KEY (user_name, listened_at, recording_msid)
 );
 
--- Derived from listens rather than stored, so it can never go stale.
+-- always in sync with listens
 CREATE OR REPLACE VIEW users AS
 SELECT
     user_name,
