@@ -106,87 +106,59 @@ Defined in [`schema.sql`](src/listens_etl/schema.sql) and applied on every conne
 | `ingestion_runs` | load run | `run_id` |
 | `rejected_records` | unusable line | `run_id, line_number` |
 
-Some choices that make the analysis easier:
+For the analysis:
 
-- Listens are inserted in time order. DuckDB keeps min/max values per block, and a date
-  filter can skip most of the table. The a2 query filters on a plain `listened_at` range
-  for that reason.
-- `listened_date` is a computed column, and the daily queries group by it directly.
+- Listens are stored in time order, so date filters (like a2's `listened_at` range) skip
+  most of the table.
+- `listened_date` is a computed column the daily queries group by.
 - Ids use DuckDB's `UUID` type: 16 bytes each, and a malformed id fails on insert.
-- The joins to track, artist and release names live in the `listens_enriched` view.
-  Per-user stats are in `users`.
-- I didn't add indexes. DuckDB is a column store and these queries read whole columns
-  anyway. The primary key is only there to keep listens unique.
+- No extra indexes. DuckDB is a column store and these queries read whole columns.
 
 ## Analysis
 
-One SQL file per question in [`src/listens_etl/queries/`](src/listens_etl/queries/):
+One SQL file per question in [`src/listens_etl/queries/`](src/listens_etl/queries/). All
+dates are UTC.
 
-| File | Question |
-|---|---|
-| `a1_top_users.sql` | Top 10 users by number of songs listened to |
-| `a2_users_on_2019_03_01.sql` | How many users listened to a song on 1 March 2019 |
-| `a3_first_song_per_user.sql` | First song each user listened to |
-| `b_top_days_per_user.sql` | Each user's top 3 days by listens |
-| `c_daily_active_users.sql` | Daily active users over a 7-day window, count and % |
+| File | Question | How I read it |
+|---|---|---|
+| `a1_top_users.sql` | Top 10 users by songs listened to | Every listen counts. `distinct_songs` covers the other reading (hds: 46,885 listens, 102 recordings) |
+| `a2_users_on_2019_03_01.sql` | Users who listened on 1 March 2019 | The UTC day |
+| `a3_first_song_per_user.sql` | First song per user | Same-second ties are ordered by ListenBrainz's `dedup_tag` |
+| `b_top_days_per_user.sql` | Top 3 days per user | Ties go to the earlier date. Users with fewer than 3 active days get fewer rows |
+| `c_daily_active_users.sql` | Daily active users, 7-day window | Percentage of all users. The first six days have incomplete windows, and 15 April has only a few minutes of data |
 
-```bash
-make analyze                                # all queries, CSVs in results/
-uv run listens-etl analyze a1_top_users     # just one
-uv run listens-etl analyze --rows 50        # print more rows
-```
-
-How I read the questions:
-
-- Dates are UTC. `listened_at` is a Unix timestamp and the data has no user timezone.
-- a1: I count every listen, repeats included. Counting distinct songs instead changes the
-  top 10 a lot. hds is first with 46,885 listens but played only 102 different recordings.
-  That's why the query also returns `distinct_songs`.
-- a3: in two cases a user's first listen shares its second with another one. ListenBrainz
-  sets `dedup_tag` on the later plays, and I use that to order them.
-- b: ties go to the earlier date. Users with fewer than 3 active days get fewer rows.
-- c: the percentage is out of all users in the data. I thought about dividing by the users
-  seen so far, but then 1 January comes out at 100% and the first weeks mostly measure
-  sign-ups. The first six days have incomplete windows and the last day only has a few
-  minutes of data. I kept both.
-- One user name contains the Unicode replacement character (`�`). It's like that in
-  the export and I left it alone.
+For c I divide by all users rather than the users seen so far, which would put 1 January
+at 100%. One user name contains a replacement character (`�`); it's like that in the
+export. Run a single query with `uv run listens-etl analyze a1_top_users`.
 
 ## Design decisions
 
-- A listen is identified by `(user_name, listened_at, recording_msid)`. User and
-  timestamp aren't unique on their own: the export has 7,126 cases of someone playing two
-  recordings in the same second.
-- That key is what makes re-runs safe. The same file again inserts nothing, an
-  overlapping file only adds the new listens, and duplicates within a file keep the
-  first copy.
-- Validation is strict for what a listen needs (user, timestamp, recording id, track,
-  artist and artist id). Malformed optional ids like `release_msid` become NULL. I'd
-  rather keep the listen than lose it over an id nobody queries.
-- If a recording or artist shows up with different names, the most recent listen wins.
-  The order in which files are loaded doesn't change the result.
-- The connection is set to UTC. DuckDB otherwise uses the machine's timezone, which put
-  listens near midnight on the wrong day on my laptop (Berlin time).
-- No foreign keys. In DuckDB they slow down bulk loads and get in the way of updating
-  referenced rows. A test checks for orphans instead.
-- `additional_info` is stored per listen with the empty keys dropped. Some of its keys,
-  like `dedup_tag` and `listening_from`, are about the listen itself.
-- For c, each (user, active day) is spread over the 7 days it counts for, and users are
-  counted once per day. Summing the daily counts over a window would count people
-  several times.
-- Before writing the tests I cross-checked every answer with a quick Python script over
-  the raw file.
+- Listens are keyed on `(user_name, listened_at, recording_msid)`. User and timestamp
+  alone aren't unique: the export has 7,126 same-second plays of two recordings.
+- The key makes re-runs safe. The same file inserts nothing, an overlapping file only
+  adds new listens, and duplicates within a file keep the first copy.
+- Required fields are validated strictly. A malformed optional id like `release_msid`
+  becomes NULL instead of dropping the listen.
+- When a recording or artist has conflicting names, the most recent listen wins,
+  whatever the load order.
+- The session is set to UTC. DuckDB's default local timezone put listens near midnight
+  on the wrong day.
+- No foreign keys: they slow down bulk loads in DuckDB. A test checks for orphans.
+- `additional_info` is kept per listen with empty keys dropped, since keys like
+  `dedup_tag` describe the listen.
+- c spreads each (user, active day) over the 7 days it counts for and counts users once
+  per day. Summing daily counts would count some users several times.
+- Every answer was cross-checked against a separate Python calculation on the raw file.
 
 ## Trade-offs and next steps
 
-- Parsing happens in Python, which lets every line be checked on its own. I also tried
-  parsing in DuckDB with `json_transform`. It was more than twice as fast, but one
-  unexpected value can fail a whole batch. For the full ListenBrainz dump I'd switch and
-  use `TRY_CAST` everywhere.
-- DuckDB's `read_json(ignore_errors=true)` is faster still. In my tests it loaded most of
-  the deliberately broken lines as valid rows and dropped the rest without saying so.
-- The file hash is recorded but not used to skip files that were already loaded.
-  Reprocessing takes seconds and is always correct; skipping would need a `--force` flag.
-- At a bigger scale I'd turn `users` into a table, partition listens by date and run the
-  load from a scheduler, with an alert on the reject rate.
+- Parsing in Python checks each line on its own. DuckDB's `json_transform` was more than
+  twice as fast, but one bad value fails the whole batch. For the full dump I'd switch
+  and use `TRY_CAST` everywhere.
+- `read_json(ignore_errors=true)` is faster still, but it accepted most of my deliberately
+  broken lines as valid rows.
+- The file hash isn't used to skip files already loaded. Reprocessing is cheap and always
+  correct.
+- At a larger scale: `users` as a table, listens partitioned by date, and scheduled loads
+  with an alert on the reject rate.
 - Not done: a Docker image, type checking, a chart for c.
