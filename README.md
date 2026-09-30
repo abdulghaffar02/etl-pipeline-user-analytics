@@ -27,6 +27,53 @@ writes them to `results/`.
 
 If `make` or `git` complains about the Xcode license, run `sudo xcodebuild -license accept` once.
 
+## Project layout
+
+```
+src/listens_etl/
+  cli.py           listens-etl command: init-db, ingest, analyze
+  parse.py         one line -> Listen or InvalidRecord
+  ingest.py        stage, merge, run log
+  db.py            connection (UTC) and schema
+  schema.sql
+  queries/*.sql    one file per Task 2 question
+  analysis.py      runs the queries
+  config.py        database path: --db, then $LISTENS_DB, then data/listens.duckdb
+tests/             pytest, small hand-built exports in each test
+results/           query results, one CSV per question
+```
+
+## Commands
+
+| make | Plain command | Purpose |
+|---|---|---|
+| `make setup` | `uv sync && uv run pre-commit install` | Install deps and git hooks |
+| `make init-db` | `uv run listens-etl init-db` | Create the database and tables |
+| `make ingest` | `uv run listens-etl ingest data/dataset.txt` | Load the export (`FILE=...` for another file) |
+| `make analyze` | `uv run listens-etl analyze --out results` | Run the queries, write the CSVs |
+| `make pipeline` | ingest, then analyze | Everything in one go |
+| `make test` | `uv run pytest` | Run tests |
+| `make lint` | `uv run ruff check . && uv run ruff format --check .` | Lint and format check |
+| `make fmt` | `uv run ruff check --fix . && uv run ruff format .` | Auto-fix and format |
+| `make check` | lint, then test | What CI runs |
+| `make clean` | | Remove `.venv`, caches, local database |
+
+The database lives at `data/listens.duckdb`. Use `--db PATH` or `LISTENS_DB` to put it
+somewhere else (the flag wins).
+
+On Linux and Windows the commands are the same. Without `make` (usually the case on
+Windows), use the plain commands.
+
+## Contributing
+
+- `main` is protected: no direct pushes, changes land through squash-merged PRs.
+- Branch names start with `feat/`, `fix/`, `chore/`, `docs/`, `test/` or `ci/`.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org).
+- The pre-commit hooks run ruff and refuse commits to `main`.
+- CI runs on every PR and has to pass before merging: `lint`, `test` on macOS, Ubuntu
+  and Windows, and `test (python 3.11)` for the lowest supported Python.
+- Dependabot opens weekly PRs to update the pinned GitHub Actions.
+
 ## How it works
 
 1. [`parse.py`](src/listens_etl/parse.py) turns each line into a `Listen` or rejects it
@@ -143,50 +190,3 @@ How I read the questions:
 - At a bigger scale I'd turn `users` into a table, partition listens by date and run the
   load from a scheduler, with an alert on the reject rate.
 - Not done: a Docker image, type checking, a chart for c.
-
-## Project layout
-
-```
-src/listens_etl/
-  cli.py           listens-etl command: init-db, ingest, analyze
-  parse.py         one line -> Listen or InvalidRecord
-  ingest.py        stage, merge, run log
-  db.py            connection (UTC) and schema
-  schema.sql
-  queries/*.sql    one file per Task 2 question
-  analysis.py      runs the queries
-  config.py        database path: --db, then $LISTENS_DB, then data/listens.duckdb
-tests/             pytest, small hand-built exports in each test
-results/           query results, one CSV per question
-```
-
-## Commands
-
-| make | Plain command | Purpose |
-|---|---|---|
-| `make setup` | `uv sync && uv run pre-commit install` | Install deps and git hooks |
-| `make init-db` | `uv run listens-etl init-db` | Create the database and tables |
-| `make ingest` | `uv run listens-etl ingest data/dataset.txt` | Load the export (`FILE=...` for another file) |
-| `make analyze` | `uv run listens-etl analyze --out results` | Run the queries, write the CSVs |
-| `make pipeline` | ingest, then analyze | Everything in one go |
-| `make test` | `uv run pytest` | Run tests |
-| `make lint` | `uv run ruff check . && uv run ruff format --check .` | Lint and format check |
-| `make fmt` | `uv run ruff check --fix . && uv run ruff format .` | Auto-fix and format |
-| `make check` | lint, then test | What CI runs |
-| `make clean` | | Remove `.venv`, caches, local database |
-
-The database lives at `data/listens.duckdb`. Use `--db PATH` or `LISTENS_DB` to put it
-somewhere else (the flag wins).
-
-On Linux and Windows the commands are the same. Without `make` (usually the case on
-Windows), use the plain commands.
-
-## Contributing
-
-- `main` is protected: no direct pushes, changes land through squash-merged PRs.
-- Branch names start with `feat/`, `fix/`, `chore/`, `docs/`, `test/` or `ci/`.
-- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org).
-- The pre-commit hooks run ruff and refuse commits to `main`.
-- CI runs on every PR and has to pass before merging: `lint`, `test` on macOS, Ubuntu
-  and Windows, and `test (python 3.11)` for the lowest supported Python.
-- Dependabot opens weekly PRs to update the pinned GitHub Actions.
